@@ -1,0 +1,19 @@
+{
+  "name": "daverandom/hookable-soap-client",
+  "description": "A layer to make custom modification of SoapClient requests simpler",
+  "minimum-stability": "stable",
+  "license": "mit",
+  "authors": [
+    {
+      "name": "Chris Wright",
+      "email": "foss.hookable-soap-client@daverandom.com"
+    }
+  ],
+  "autoload": {
+    "psr-4": { "DaveRandom\\HookableSoapClient\\": "src/" }
+  },
+  "require": {
+    "php": ">=7.2",
+    "room11/dom-utils": "^1.0"
+  }
+}
