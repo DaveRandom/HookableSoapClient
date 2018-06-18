@@ -4,92 +4,187 @@ namespace DaveRandom\HookableSoapClient;
 
 use Room11\DOMUtils\LibXMLFatalErrorException;
 
-abstract class SoapClient extends \SoapClient implements ISoapClient
+abstract class SoapClient extends \SoapClient
 {
-    private $haveBeforeRequestHandler;
     private $haveResponseHandler;
-    private $haveResponseParseFailureHandler;
+    private $currentCallData;
 
-    private static function parseXmlString(string $xml): \DOMDocument
+    private function formatResponseXmlAsString($xml): string
     {
-        try {
-            return \Room11\DOMUtils\domdocument_load_xml($xml);
-        } catch (LibXMLFatalErrorException $e) {
-            throw new XmlParseFailedError("Failed to parse XML data: {$e->getMessage()}", $e->getCode(), $e);
+        if ($xml === null || \is_string($xml)) {
+            return $xml;
         }
+
+        if (!($xml instanceof \DOMDocument)) {
+            throw new \TypeError('Response XML must be a string or an instance of ' . \DOMDocument::class);
+        }
+
+        return $xml->saveXML();
     }
 
-    private static function isMethodOverridden(callable $method): bool
+    /**
+     * @param \DOMDocument|string|null $xml
+     * @throws LibXMLFatalErrorException
+     */
+    private function formatResponseXmlAsDocument($xml): ?\DOMDocument
     {
-        try {
-            return (new \ReflectionMethod($method[0], $method[1]))->getDeclaringClass()->getName() !== self::class;
-        } catch (\ReflectionException $e) {
-            throw new \Error("Failed to get details of method: {$method[1]}");
+        if ($xml === null || $xml instanceof \DOMDocument) {
+            return $xml;
         }
+
+        if (!\is_string($xml)) {
+            throw new \TypeError('Response XML must be a string or an instance of ' . \DOMDocument::class);
+        }
+
+        return \trim($xml) !== ''
+            ? \Room11\DOMUtils\domdocument_load_xml($xml)
+            : null;
     }
 
     public function __doRequest($xml, $uri, $action, $version, $oneWay = 0): string
     {
-        $request = new Request(self::parseXmlString((string)$xml), $uri, $action, $version, !$oneWay);
-
-        if ($this->haveBeforeRequestHandler) {
-            $this->onBeforeRequest($request);
+        try {
+            $requestDocument = \Room11\DOMUtils\domdocument_load_xml($xml);
+        } catch (LibXMLFatalErrorException $e) {
+            throw new \Error("Failed to parse request XML: {$e->getMessage()}", $e->getCode(), $e);
         }
 
-        $responseXml = parent::__doRequest(
-            $request->getDocument()->saveXML(),
-            $request->getUri(),
-            $request->getAction(),
-            $request->getVersion(),
-            $oneWay
-        );
+        $request = new Request($requestDocument, $uri, $action, $version, !$oneWay, $this->currentCallData);
+
+        $this->onBeforeRequest($request);
+
+        $responseXml = $this->onRequest($request);
 
         if (!$this->haveResponseHandler) {
-            return $responseXml;
+            return $this->formatResponseXmlAsString($responseXml);
         }
 
         try {
-            $response = new Response($responseXml !== '' ? self::parseXmlString($responseXml) : null, $request);
-            $this->onResponse($response);
-
-            $responseXml = $response->hasDocument()
-                ? $response->getDocument()->saveXML()
-                : '';
-        } catch (XmlParseFailedError $e) {
-            if ($this->haveResponseParseFailureHandler) {
-                $responseXml = $this->onResponseParseFailed($responseXml, $request);
-            }
+            $responseDocument = $this->formatResponseXmlAsDocument($responseXml);
+        } catch (LibXMLFatalErrorException $e) {
+            return $this->onResponseParseFailed($responseXml, $request, $e->getLibXMLError()) ?? '';
         }
 
-        return $responseXml;
+        $response = new Response($responseDocument, $request);
+        $this->onResponse($response);
+
+        return $response->hasDocument()
+            ? $response->getDocument()->saveXML()
+            : '';
+    }
+
+    public function __soapCall($functionName, $arguments = [], $options = [], $inputHeaders = [], &$outputHeaders = [])
+    {
+        $this->currentCallData = new CallData(
+            $functionName,
+            new \ArrayObject($arguments),
+            CallOptions::createFromArray($options ?? []),
+            new SoapHeaderArray($inputHeaders)
+        );
+
+        $this->onBeforeCall($this->currentCallData);
+
+        $result = parent::__soapCall(
+            $this->currentCallData->getFunctionName(),
+            $this->currentCallData->getArguments()->getArrayCopy(),
+            $this->currentCallData->getOptions()->toArray(),
+            $this->currentCallData->getInputHeaders()->getArrayCopy(),
+            $outputHeaders
+        );
+
+        $outputHeaders = new SoapHeaderArray($outputHeaders);
+        $result = $this->onAfterCall($this->currentCallData, $result, $outputHeaders);
+
+        $outputHeaders = $outputHeaders->getArrayCopy();
+        $this->currentCallData = null;
+
+        return $result;
+    }
+
+    public function __call($functionName, $arguments)
+    {
+        return $this->__soapCall($functionName, $arguments);
     }
 
     public function __construct($wsdl, array $options = null)
     {
         parent::__construct($wsdl, $options ?? []);
 
-        $this->haveBeforeRequestHandler = self::isMethodOverridden([$this, 'onBeforeRequest']);
-        $this->haveResponseHandler = self::isMethodOverridden([$this, 'onResponse']);
-        $this->haveResponseParseFailureHandler = self::isMethodOverridden([$this, 'onResponseParseFailed']);
+        try {
+            $responseHandlerDeclaringClass = (new \ReflectionMethod($this, 'onResponse'))->getDeclaringClass();
+            $this->haveResponseHandler = $responseHandlerDeclaringClass->getName() !== self::class;
+        } catch (\ReflectionException $e) {
+            throw new \Error(\sprintf(
+                'Failed to get declaring class name of method %s::%s()',
+                \get_class($this), 'onResponse'
+            ));
+        }
     }
+
+    /**
+     * When overridden in a child class, this method is called before a request is generated from the arguments used
+     * to invoke the SOAP call. Modifications to the passed Call object will be reflected in the request that is
+     * generated.
+     */
+    protected function onBeforeCall(CallData $callData): void { }
 
     /**
      * When overridden in a child class, this method is called before a request is sent to the remote server.
      * Modifications to the passed Request object will be reflected in the request that is sent.
      */
-    public function onBeforeRequest(Request $request): void { }
+    protected function onBeforeRequest(Request $request): void { }
+
+    /**
+     * Send the request to the server and retrieve the response. Can be overridden in a child class to implement a
+     * custom transport mechanism. Must return a string containing an XML document, or null if the request does not
+     * generate a response.
+     *
+     * @return string|\DOMDocument|null
+     */
+    protected function onRequest(Request $request)
+    {
+        return parent::__doRequest(
+            $request->getDocument()->saveXML(),
+            $request->getUri(),
+            $request->getAction(),
+            $request->getVersion(),
+            (int)!$request->isResponseExpected()
+        );
+    }
 
     /**
      * When overridden in a child class, this method is called after the response is recieved, and before the data
      * is processed by the SOAP extension. Modifications to the passed Response object will be reflected in the
      * generation of the return value of the underlying SOAP call.
      */
-    public function onResponse(Response $response): void { }
+    protected function onResponse(Response $response): void { }
+
+    /**
+     * When overridden in a child class, this method is called after the result data is generated from the response.
+     * Must return the result data that should be returned to the caller.
+     *
+     * @param mixed $result
+     * @return mixed
+     */
+    protected function onAfterCall(
+        /** @noinspection PhpUnusedParameterInspection */ CallData $callData,
+        $result,
+        /** @noinspection PhpUnusedParameterInspection */ SoapHeaderArray $responseHeaders
+    ) {
+        return $result;
+    }
 
     /**
      * When overridden in a child class, this method is called when the response recieved from the server could not
      * be parsed as an XML document. The return value will be processed by the SOAP extension as if it were the
      * data returned by the server
      */
-    public function onResponseParseFailed(string $responseData, Request $request): string { }
+    protected function onResponseParseFailed(
+        string $responseData,
+        /** @noinspection PhpUnusedParameterInspection */  Request $request,
+        /** @noinspection PhpUnusedParameterInspection */  \LibXMLError $error
+    ): ?string
+    {
+        return $responseData;
+    }
 }
