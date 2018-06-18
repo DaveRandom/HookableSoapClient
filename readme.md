@@ -23,7 +23,7 @@ abstract class \DaveRandom\HookableSoapClient\SoapClient extends \SoapClient
      * is processed by the SOAP extension. Modifications to the passed Response object will be reflected in the
      * generation of the return value of the underlying SOAP call.
      */
-    protected function onResponse(Response $request): void;
+    protected function onResponse(Response $response): void;
 
     /**
      * When overridden in a child class, this method is called when the response recieved from the server could not
