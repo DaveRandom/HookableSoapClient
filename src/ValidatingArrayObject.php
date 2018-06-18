@@ -2,14 +2,14 @@
 
 namespace DaveRandom\HookableSoapClient;
 
-abstract class TypedArrayObject extends \ArrayObject
+abstract class ValidatingArrayObject extends \ArrayObject
 {
     public function __construct(array $input = null, int $flags = null, string $iteratorClass = null)
     {
         $input = $input ?? [];
 
         foreach ($input as $value) {
-            $this->checkType($value);
+            $this->validateValue($value);
         }
 
         parent::__construct($input, $flags ?? 0, $iteratorClass ?? \ArrayIterator::class);
@@ -17,10 +17,15 @@ abstract class TypedArrayObject extends \ArrayObject
 
     public function offsetSet($index, $value): void
     {
-        $this->checkType($value);
+        $this->validateValue($value);
 
         parent::offsetSet($index, $value);
     }
 
-    abstract protected function checkType($value): void;
+    abstract protected function validateValue($value): void;
+
+    public function __debugInfo(): array
+    {
+        return $this->getArrayCopy();
+    }
 }

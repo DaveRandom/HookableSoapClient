@@ -2,7 +2,7 @@
 
 namespace DaveRandom\HookableSoapClient;
 
-final class SoapHeaderArray extends TypedArrayObject
+final class SoapHeaderArray extends ValidatingArrayObject
 {
     /**
      * @param \SoapHeader[]|\SoapHeader|null $input
@@ -22,7 +22,7 @@ final class SoapHeaderArray extends TypedArrayObject
         parent::__construct($input);
     }
 
-    protected function checkType($value): void
+    protected function validateValue($value): void
     {
         if (!($value instanceof \SoapHeader)) {
             throw new \TypeError('SOAP header must be instance of ' . \SoapHeader::class);

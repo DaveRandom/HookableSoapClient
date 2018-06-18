@@ -11,7 +11,7 @@ final class CallData
 
     public function __construct(
         string $functionName,
-        \ArrayObject $arguments,
+        CallArguments $arguments,
         CallOptions $options,
         SoapHeaderArray $headers
     ) {
@@ -43,7 +43,7 @@ final class CallData
     /**
      * Get the arguments passed when invoking the call. Modifications will be reflected in the request XML document.
      */
-    public function getArguments(): \ArrayObject
+    public function getArguments(): CallArguments
     {
         return $this->arguments;
     }

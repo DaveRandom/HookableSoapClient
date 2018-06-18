@@ -50,7 +50,7 @@ abstract class \DaveRandom\HookableSoapClient\SoapClient extends \SoapClient
      * When overridden in a child class, this method is called after the result data is generated from the
      * response. Must return the result data that should be passed back to the caller.
      */
-    protected mixed onAfterCall(CallData $callData, mixed $result, SoapHeaderArray $responseHeaders);
+    protected mixed onAfterCall(mixed $result, Response $response, SoapHeaderArray $responseHeaders);
 }
 ```
 
@@ -78,7 +78,7 @@ final class \DaveRandom\HookableSoapClient\CallData
     /**
      * Get the arguments passed when invoking the call.
      */
-    public \ArrayObject getArguments();
+    public CallArguments getArguments();
 
     /**
      * Get the options passed when invoking the call.
@@ -91,6 +91,9 @@ final class \DaveRandom\HookableSoapClient\CallData
     public SoapHeaderArray getInputHeaders();
 }
 ```
+
+`CallArguments` and `SoapHeaderArray` inherit from `\ArrayObject`, thus modifications can be made directly to
+these objects.
 
 ### [CallOptions](https://github.com/DaveRandom/HookableSoapClient/blob/master/src/CallOptions.php)
 

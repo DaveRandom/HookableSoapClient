@@ -6,21 +6,8 @@ use Room11\DOMUtils\LibXMLFatalErrorException;
 
 abstract class SoapClient extends \SoapClient
 {
-    private $haveResponseHandler;
     private $currentCallData;
-
-    private function formatResponseXmlAsString($xml): string
-    {
-        if ($xml === null || \is_string($xml)) {
-            return $xml;
-        }
-
-        if (!($xml instanceof \DOMDocument)) {
-            throw new \TypeError('Response XML must be a string or an instance of ' . \DOMDocument::class);
-        }
-
-        return $xml->saveXML();
-    }
+    private $currentResponse;
 
     /**
      * @param \DOMDocument|string|null $xml
@@ -55,50 +42,49 @@ abstract class SoapClient extends \SoapClient
 
         $responseXml = $this->onRequest($request);
 
-        if (!$this->haveResponseHandler) {
-            return $this->formatResponseXmlAsString($responseXml);
-        }
-
         try {
             $responseDocument = $this->formatResponseXmlAsDocument($responseXml);
         } catch (LibXMLFatalErrorException $e) {
             return $this->onResponseParseFailed($responseXml, $request, $e->getLibXMLError()) ?? '';
         }
 
-        $response = new Response($responseDocument, $request);
-        $this->onResponse($response);
+        $this->currentResponse = new Response($responseDocument, $request);
+        $this->onResponse($this->currentResponse);
 
-        return $response->hasDocument()
-            ? $response->getDocument()->saveXML()
+        return $this->currentResponse->hasDocument()
+            ? $this->currentResponse->getDocument()->saveXML()
             : '';
     }
 
     public function __soapCall($functionName, $arguments = [], $options = [], $inputHeaders = [], &$outputHeaders = [])
     {
-        $this->currentCallData = new CallData(
-            $functionName,
-            new \ArrayObject($arguments),
-            CallOptions::createFromArray($options ?? []),
-            new SoapHeaderArray($inputHeaders)
-        );
+        try {
+            $this->currentCallData = new CallData(
+                $functionName,
+                new CallArguments($arguments),
+                CallOptions::createFromArray($options ?? []),
+                new SoapHeaderArray($inputHeaders)
+            );
 
-        $this->onBeforeCall($this->currentCallData);
+            $this->onBeforeCall($this->currentCallData);
 
-        $result = parent::__soapCall(
-            $this->currentCallData->getFunctionName(),
-            $this->currentCallData->getArguments()->getArrayCopy(),
-            $this->currentCallData->getOptions()->toArray(),
-            $this->currentCallData->getInputHeaders()->getArrayCopy(),
-            $outputHeaders
-        );
+            $result = parent::__soapCall(
+                $this->currentCallData->getFunctionName(),
+                $this->currentCallData->getArguments()->getArrayCopy(),
+                $this->currentCallData->getOptions()->toArray(),
+                $this->currentCallData->getInputHeaders()->getArrayCopy(),
+                $outputHeaders
+            );
 
-        $outputHeaders = new SoapHeaderArray($outputHeaders);
-        $result = $this->onAfterCall($this->currentCallData, $result, $outputHeaders);
+            $outputHeaders = new SoapHeaderArray($outputHeaders);
+            $result = $this->onAfterCall($result, $this->currentResponse, $outputHeaders);
+            $outputHeaders = $outputHeaders->getArrayCopy();
 
-        $outputHeaders = $outputHeaders->getArrayCopy();
-        $this->currentCallData = null;
-
-        return $result;
+            return $result;
+        } finally {
+            $this->currentCallData = null;
+            $this->currentResponse = null;
+        }
     }
 
     public function __call($functionName, $arguments)
@@ -109,16 +95,6 @@ abstract class SoapClient extends \SoapClient
     public function __construct($wsdl, array $options = null)
     {
         parent::__construct($wsdl, $options ?? []);
-
-        try {
-            $responseHandlerDeclaringClass = (new \ReflectionMethod($this, 'onResponse'))->getDeclaringClass();
-            $this->haveResponseHandler = $responseHandlerDeclaringClass->getName() !== self::class;
-        } catch (\ReflectionException $e) {
-            throw new \Error(\sprintf(
-                'Failed to get declaring class name of method %s::%s()',
-                \get_class($this), 'onResponse'
-            ));
-        }
     }
 
     /**
@@ -167,8 +143,8 @@ abstract class SoapClient extends \SoapClient
      * @return mixed
      */
     protected function onAfterCall(
-        /** @noinspection PhpUnusedParameterInspection */ CallData $callData,
         $result,
+        /** @noinspection PhpUnusedParameterInspection */ Response $response,
         /** @noinspection PhpUnusedParameterInspection */ SoapHeaderArray $responseHeaders
     ) {
         return $result;
