@@ -72,22 +72,16 @@ MESSAGE;
     protected function onBeforeCall(CallData $callData): void
     {
         $this->logger->log(__METHOD__ . "()\n{$this->formatCallData($callData)}");
-
-        parent::onBeforeCall($callData);
     }
 
     protected function onBeforeRequest(Request $request): void
     {
         $this->logger->log(__METHOD__ . "()\n{$this->formatRequest($request)}");
-
-        parent::onBeforeRequest($request);
     }
 
     protected function onResponse(Response $response): void
     {
         $this->logger->log(__METHOD__ . "()\n{$this->getFormattedXml($response->getDocument())}");
-
-        parent::onResponse($response);
     }
 
     protected function onAfterCall($result, Response $response, SoapHeaderArray $responseHeaders)
