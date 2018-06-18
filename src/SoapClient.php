@@ -84,7 +84,7 @@ abstract class SoapClient extends \SoapClient implements ISoapClient
      * is processed by the SOAP extension. Modifications to the passed Response object will be reflected in the
      * generation of the return value of the underlying SOAP call.
      */
-    public function onResponse(Response $request): void { }
+    public function onResponse(Response $response): void { }
 
     /**
      * When overridden in a child class, this method is called when the response recieved from the server could not
