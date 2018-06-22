@@ -30,9 +30,11 @@ abstract class SoapClient extends \SoapClient
             throw new \TypeError('Response XML must be a string or an instance of ' . \DOMDocument::class);
         }
 
-        return \trim($xml) !== ''
-            ? \Room11\DOMUtils\domdocument_load_xml($xml)
-            : null;
+        if (\trim($xml) === '') {
+            return null;
+        }
+
+        return \Room11\DOMUtils\domdocument_load_xml($xml);
     }
 
     public function __doRequest($xml, $uri, $action, $version, $oneWay = 0): string
