@@ -6,8 +6,15 @@ use Room11\DOMUtils\LibXMLFatalErrorException;
 
 abstract class SoapClient extends \SoapClient
 {
+    private $options;
+
     private $currentCallData;
     private $currentResponse;
+
+    protected $__last_request;
+    protected $__last_response;
+    protected $__last_request_headers;
+    protected $__last_response_headers;
 
     /**
      * @param \DOMDocument|string|null $xml
@@ -63,7 +70,8 @@ abstract class SoapClient extends \SoapClient
                 $functionName,
                 new CallArguments($arguments),
                 CallOptions::createFromArray($options ?? []),
-                new SoapHeaderArray($inputHeaders)
+                new SoapHeaderArray($inputHeaders),
+                $this->options
             );
 
             $this->onBeforeCall($this->currentCallData);
@@ -94,7 +102,9 @@ abstract class SoapClient extends \SoapClient
 
     public function __construct($wsdl, array $options = null)
     {
-        parent::__construct($wsdl, $options ?? []);
+        $this->options = $options ?? [];
+
+        parent::__construct($wsdl, $this->options);
     }
 
     /**
@@ -119,13 +129,25 @@ abstract class SoapClient extends \SoapClient
      */
     protected function onRequest(Request $request)
     {
-        return parent::__doRequest(
-            $request->getDocument()->saveXML(),
+        $requestXml = $request->getDocument()->saveXML();
+
+        if ($this->options['trace'] ?? false) {
+            $this->__last_request = $requestXml;
+        }
+
+        $responseXml = parent::__doRequest(
+            $requestXml,
             $request->getUri(),
             $request->getAction(),
             $request->getVersion(),
             (int)!$request->isResponseExpected()
         );
+
+        if ($this->options['trace'] ?? false) {
+            $this->__last_response = $responseXml;
+        }
+
+        return $responseXml;
     }
 
     /**

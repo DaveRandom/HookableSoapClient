@@ -8,17 +8,20 @@ final class CallData
     private $arguments;
     private $options;
     private $inputHeaders;
+    private $clientOptions;
 
     public function __construct(
         string $functionName,
         CallArguments $arguments,
         CallOptions $options,
-        SoapHeaderArray $headers
+        SoapHeaderArray $headers,
+        array $clientOptions
     ) {
         $this->functionName = $functionName;
         $this->arguments = $arguments;
         $this->options = $options;
         $this->inputHeaders = $headers;
+        $this->clientOptions = $clientOptions;
     }
 
     /**
@@ -62,5 +65,13 @@ final class CallData
     public function getInputHeaders(): SoapHeaderArray
     {
         return $this->inputHeaders;
+    }
+
+    /**
+     * Get the options the SoapClient was initialised with
+     */
+    public function getClientOptions(): array
+    {
+        return $this->clientOptions;
     }
 }
